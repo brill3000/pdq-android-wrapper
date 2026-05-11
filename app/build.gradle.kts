@@ -21,6 +21,11 @@ android {
             "LOGS_API_URL",
             "\"https://pdq-api.hiduka.co.ke/logs/client\"",
         )
+        buildConfigField(
+            "String",
+            "GRAPHQL_ENDPOINT",
+            "\"https://pdq-api.hiduka.co.ke/graphql\"",
+        )
     }
 
     buildTypes {
@@ -31,6 +36,11 @@ android {
                 "String",
                 "LOGS_API_URL",
                 "\"https://pdq-api.hiduka.co.ke/logs/client\"",
+            )
+            buildConfigField(
+                "String",
+                "GRAPHQL_ENDPOINT",
+                "\"https://pdq-api.hiduka.co.ke/graphql\"",
             )
         }
         release {
@@ -64,6 +74,7 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.webkit:webkit:1.10.0")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Newland NDK SDK lives in app/libs/ once you have the .aar from
     // Newland. Uncomment and adjust the artefact name when adding it.

@@ -19,7 +19,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import co.ke.hiduka.pdq.databinding.ActivityMainBinding
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -123,6 +130,22 @@ class MainActivity : AppCompatActivity() {
         network.start()
         WrapperLogger.start()
         WrapperLogger.i(TAG, "wrapper boot", mapOf("webAppUrl" to BuildConfig.WEB_APP_URL))
+        scheduleOutboxSync()
+    }
+
+    private fun scheduleOutboxSync() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val request = PeriodicWorkRequestBuilder<OutboxSyncWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "hdq-outbox-sync",
+            ExistingPeriodicWorkPolicy.KEEP,
+            request,
+        )
     }
 
     override fun onDestroy() {
