@@ -102,7 +102,7 @@ class NetworkBridge(
     private fun currentState(): JSONObject {
         val json = JSONObject()
         val activeNetwork = cm?.activeNetwork
-        val caps = activeNetwork?.let { cm.getNetworkCapabilities(it) }
+        val caps = activeNetwork?.let { cm?.getNetworkCapabilities(it) }
         val connected = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
         json.put("connected", connected)
