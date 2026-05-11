@@ -28,6 +28,7 @@ class PrinterBridge(private val context: Context) {
 
     @JavascriptInterface
     fun printText(text: String): String = wrapResult {
+        WrapperLogger.i("PrinterBridge", "printText", mapOf("length" to text.length))
         printer.printText(text)
     }
 
@@ -70,7 +71,7 @@ class PrinterBridge(private val context: Context) {
             block()
             JSONObject().put("ok", true).toString()
         } catch (e: Throwable) {
-            Log.e("PrinterBridge", "print failed", e)
+            WrapperLogger.e("PrinterBridge", "print failed: ${e.message}", e)
             JSONObject()
                 .put("ok", false)
                 .put("error", e.message ?: e.javaClass.simpleName)

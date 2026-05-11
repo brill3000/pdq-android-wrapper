@@ -16,12 +16,22 @@ android {
 
         // Default points at production. Override per build type below.
         buildConfigField("String", "WEB_APP_URL", "\"https://pdq.hiduka.co.ke\"")
+        buildConfigField(
+            "String",
+            "LOGS_API_URL",
+            "\"https://pdq-api.hiduka.co.ke/logs/client\"",
+        )
     }
 
     buildTypes {
         debug {
             isMinifyEnabled = false
             buildConfigField("String", "WEB_APP_URL", "\"https://pdq.hiduka.co.ke\"")
+            buildConfigField(
+                "String",
+                "LOGS_API_URL",
+                "\"https://pdq-api.hiduka.co.ke/logs/client\"",
+            )
         }
         release {
             isMinifyEnabled = true

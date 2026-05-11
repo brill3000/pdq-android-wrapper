@@ -1,17 +1,27 @@
 package co.ke.hiduka.pdq
 
 import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.Context
+import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
+import android.util.Base64
+import android.util.Log
+import android.webkit.CookieManager
+import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import co.ke.hiduka.pdq.databinding.ActivityMainBinding
+import java.io.FileOutputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -93,6 +103,14 @@ class MainActivity : AppCompatActivity() {
 
         webView.webChromeClient = WebChromeClient()
 
+        // Downloads. Android WebView ignores download intents by default,
+        // so receipts / exports just silently drop. Hook the listener and
+        // route through DownloadManager for normal http(s) URLs, plus a
+        // base64 inline handler for the data: URIs @react-pdf generates.
+        webView.setDownloadListener { url, _, contentDisposition, mimeType, _ ->
+            handleDownload(url, contentDisposition, mimeType)
+        }
+
         webView.loadUrl(BuildConfig.WEB_APP_URL)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -102,11 +120,75 @@ class MainActivity : AppCompatActivity() {
         })
 
         network.start()
+        WrapperLogger.start()
+        WrapperLogger.i(TAG, "wrapper boot", mapOf("webAppUrl" to BuildConfig.WEB_APP_URL))
     }
 
     override fun onDestroy() {
         network.stop()
+        WrapperLogger.stop()
         webView.destroy()
         super.onDestroy()
+    }
+
+    /**
+     * WebView download dispatcher. Two paths:
+     *
+     *  1. data: URIs (the most common path for the PWA — @react-pdf
+     *     generates PDFs as `data:application/pdf;base64,...`). We
+     *     decode + write to Downloads ourselves; DownloadManager
+     *     refuses data URIs.
+     *  2. http(s) URLs (e.g. invoice PDF served by the backend). Pass
+     *     to DownloadManager so the user gets a real notification + a
+     *     proper file in Downloads with cookies + UA carried over.
+     */
+    private fun handleDownload(url: String, contentDisposition: String?, mimeType: String?) {
+        try {
+            val filename = URLUtil.guessFileName(url, contentDisposition, mimeType)
+            if (url.startsWith("data:")) {
+                writeDataUrlToDownloads(url, filename)
+                return
+            }
+            val req = DownloadManager.Request(Uri.parse(url)).apply {
+                setMimeType(mimeType)
+                setTitle(filename)
+                setDescription("Downloading $filename")
+                setNotificationVisibility(
+                    DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED,
+                )
+                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
+                // Carry the WebView's cookies + UA so authenticated PDFs work.
+                addRequestHeader("cookie", CookieManager.getInstance().getCookie(url) ?: "")
+                addRequestHeader("User-Agent", webView.settings.userAgentString)
+            }
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            dm.enqueue(req)
+            Toast.makeText(this, "Downloading $filename", Toast.LENGTH_SHORT).show()
+        } catch (e: Throwable) {
+            Log.e(TAG, "download failed: ${e.message}", e)
+            Toast.makeText(this, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun writeDataUrlToDownloads(dataUrl: String, filename: String) {
+        // data:<mime>;base64,<payload>
+        val idx = dataUrl.indexOf("base64,")
+        if (idx < 0) {
+            Toast.makeText(this, "Unsupported data URL", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val payload = dataUrl.substring(idx + "base64,".length)
+        val bytes = Base64.decode(payload, Base64.DEFAULT)
+        val downloads = Environment.getExternalStoragePublicDirectory(
+            Environment.DIRECTORY_DOWNLOADS,
+        )
+        if (!downloads.exists()) downloads.mkdirs()
+        val out = java.io.File(downloads, filename)
+        FileOutputStream(out).use { it.write(bytes) }
+        Toast.makeText(this, "Saved to Downloads/$filename", Toast.LENGTH_SHORT).show()
+    }
+
+    companion object {
+        private const val TAG = "MainActivity"
     }
 }
