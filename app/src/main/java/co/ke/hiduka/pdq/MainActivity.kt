@@ -6,7 +6,6 @@ import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.util.Base64
 import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.URLUtil
@@ -21,7 +20,6 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import co.ke.hiduka.pdq.databinding.ActivityMainBinding
-import java.io.FileOutputStream
 
 class MainActivity : AppCompatActivity() {
 
@@ -155,14 +153,19 @@ class MainActivity : AppCompatActivity() {
                 ),
             )
             if (url.startsWith("data:")) {
-                writeDataUrlToDownloads(url, filename)
+                val idx = url.indexOf("base64,")
+                if (idx < 0) {
+                    Toast.makeText(this, "Unsupported data URL", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                app.saveFile(url.substring(idx + "base64,".length), filename, mimeType)
                 return
             }
             if (url.startsWith("blob:")) {
-                // blob: URLs only exist in the WebView's renderer
-                // process — DownloadManager can't fetch them. Inject
-                // a tiny reader that pulls the blob via fetch + FileReader
-                // and routes the base64 payload back through AppBridge.saveFile.
+                // blob: URLs only exist in the WebView's renderer process —
+                // DownloadManager can't fetch them. Inject a reader that
+                // pulls the blob via fetch + FileReader and routes the
+                // base64 payload back through AppBridge.saveFile.
                 readBlobAndSave(url, filename, mimeType)
                 return
             }
@@ -218,24 +221,6 @@ class MainActivity : AppCompatActivity() {
             })();
         """.trimIndent()
         webView.post { webView.evaluateJavascript(js, null) }
-    }
-
-    private fun writeDataUrlToDownloads(dataUrl: String, filename: String) {
-        // data:<mime>;base64,<payload>
-        val idx = dataUrl.indexOf("base64,")
-        if (idx < 0) {
-            Toast.makeText(this, "Unsupported data URL", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val payload = dataUrl.substring(idx + "base64,".length)
-        val bytes = Base64.decode(payload, Base64.DEFAULT)
-        val downloads = Environment.getExternalStoragePublicDirectory(
-            Environment.DIRECTORY_DOWNLOADS,
-        )
-        if (!downloads.exists()) downloads.mkdirs()
-        val out = java.io.File(downloads, filename)
-        FileOutputStream(out).use { it.write(bytes) }
-        Toast.makeText(this, "Saved to Downloads/$filename", Toast.LENGTH_SHORT).show()
     }
 
     companion object {

@@ -54,6 +54,7 @@ object WrapperLogger {
         handler.removeCallbacks(flushRunnable)
         // One last flush so app-close logs make it out.
         drain()
+        thread.quitSafely()
     }
 
     fun d(tag: String, message: String, context: Map<String, Any?>? = null) {
@@ -121,10 +122,9 @@ object WrapperLogger {
             put("entries", JSONArray(batch))
         }.toString()
 
-        var conn: HttpURLConnection? = null
         try {
             val url = URL(BuildConfig.LOGS_API_URL)
-            conn = (url.openConnection() as HttpURLConnection).apply {
+            val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 doOutput = true
                 connectTimeout = 5_000
@@ -132,14 +132,13 @@ object WrapperLogger {
                 setRequestProperty("Content-Type", "application/json")
             }
             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            // Drain response so the connection can be reused / closed
-            // cleanly. Don't care about the body content.
+            // Drain the response stream so HttpURLConnection's internal
+            // pool can recycle the socket on the next batch — we don't
+            // call disconnect() for the same reason.
             conn.inputStream.use { it.readBytes() }
         } catch (e: Throwable) {
             // Don't re-queue. Don't recurse into this logger. Logcat only.
             Log.w(TAG, "drain failed: ${e.message}")
-        } finally {
-            try { conn?.disconnect() } catch (_: Throwable) { /* ignore */ }
         }
     }
 }

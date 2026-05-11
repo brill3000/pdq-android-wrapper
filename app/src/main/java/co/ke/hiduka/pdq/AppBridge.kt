@@ -90,7 +90,7 @@ class AppBridge(
                 val downloads = Environment.getExternalStoragePublicDirectory(
                     Environment.DIRECTORY_DOWNLOADS,
                 )
-                if (!downloads.exists()) downloads.mkdirs()
+                downloads.mkdirs()
                 val target = File(downloads, filename)
                 FileOutputStream(target).use { it.write(bytes) }
                 target.absolutePath
