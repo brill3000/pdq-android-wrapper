@@ -1,0 +1,78 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed for the "latest" release upload
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Bootstrap Gradle wrapper (gradlew is not committed)
+        run: gradle wrapper --gradle-version 8.5
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK with short SHA
+        id: rename
+        run: |
+          mkdir -p out
+          short="${GITHUB_SHA::7}"
+          cp app/build/outputs/apk/debug/app-debug.apk "out/hdq-pos-${short}.apk"
+          echo "artifact=out/hdq-pos-${short}.apk" >> "$GITHUB_OUTPUT"
+          echo "short=${short}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hdq-pos-${{ steps.rename.outputs.short }}
+          path: ${{ steps.rename.outputs.artifact }}
+          retention-days: 30
+
+      # Rolling "latest" release — every successful main build replaces it.
+      # Cashiers can always grab https://github.com/<owner>/<repo>/releases/latest
+      # on the PDQ browser and install.
+      - name: Publish rolling "latest" release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: HDQ POS — latest build
+          body: |
+            Auto-built from `${{ github.sha }}` on ${{ github.event.repository.updated_at }}.
+
+            Install on a Newland NB60 (or any Android 7+ device):
+
+            1. Open this page in the PDQ's browser, download the APK below.
+            2. Settings → Apps → Special access → *Install unknown apps* → allow your browser.
+            3. Tap the downloaded APK → Install.
+          files: ${{ steps.rename.outputs.artifact }}
+          make_latest: true
+          prerelease: false
+
+      # Tagged releases (v1.0.0 etc.) get their own permanent release.
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.rename.outputs.artifact }}
+          generate_release_notes: true
