@@ -4,13 +4,18 @@ import android.content.ContentValues
 import android.content.Context
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.print.PrintAttributes
+import android.print.PrintJob
+import android.print.PrintJobInfo
 import android.print.PrintManager
 import android.provider.MediaStore
 import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 
@@ -110,6 +115,57 @@ class AppBridge(
     }
 
     /**
+     * Poll a PrintJob's state and push a `hdq:print` CustomEvent into the
+     * WebView whenever it changes. The PWA listens and auto-closes its
+     * success dialog on a completed job (one fewer tap per sale). Polls
+     * every 500 ms — PrintJob has no listener API on Android.
+     */
+    private fun watchPrintJob(job: PrintJob) {
+        val handler = Handler(Looper.getMainLooper())
+        var lastState = -1
+        val poller = object : Runnable {
+            override fun run() {
+                val info = job.info ?: return
+                if (info.state != lastState) {
+                    lastState = info.state
+                    val name = when (info.state) {
+                        PrintJobInfo.STATE_QUEUED -> "queued"
+                        PrintJobInfo.STATE_STARTED -> "started"
+                        PrintJobInfo.STATE_BLOCKED -> "blocked"
+                        PrintJobInfo.STATE_COMPLETED -> "completed"
+                        PrintJobInfo.STATE_CANCELED -> "cancelled"
+                        PrintJobInfo.STATE_FAILED -> "failed"
+                        else -> "unknown"
+                    }
+                    WrapperLogger.i(
+                        "AppBridge",
+                        "print job state=$name",
+                        mapOf("jobName" to (info.label ?: "")),
+                    )
+                    postPrintEvent(name, info.label ?: "")
+                    if (job.isCompleted || job.isCancelled || job.isFailed) return
+                }
+                handler.postDelayed(this, 500)
+            }
+        }
+        handler.post(poller)
+    }
+
+    private fun postPrintEvent(state: String, jobName: String) {
+        val webView = webViewProvider() ?: return
+        val payload = JSONObject().apply {
+            put("state", state)
+            put("jobName", jobName)
+        }.toString()
+        webView.post {
+            webView.evaluateJavascript(
+                "(function(){try{window.dispatchEvent(new CustomEvent('hdq:print',{detail:$payload}));}catch(e){}})();",
+                null,
+            )
+        }
+    }
+
+    /**
      * Hand a base64-encoded PDF directly to Android's PrintManager. Fires
      * the system print picker, which surfaces every registered print
      * service on the device — including the NB55's built-in printer
@@ -138,7 +194,14 @@ class AppBridge(
                 try {
                     val pm = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
                     val adapter = PdfPrintAdapter(cacheFile, jobName)
-                    pm.print(jobName, adapter, PrintAttributes.Builder().build())
+                    val attrs = PrintAttributes.Builder()
+                        // Thermal receipts only ever come out black-and-white.
+                        // Pre-selecting saves a tap when the user pokes at
+                        // the print dialog's options.
+                        .setColorMode(PrintAttributes.COLOR_MODE_MONOCHROME)
+                        .build()
+                    val job = pm.print(jobName, adapter, attrs)
+                    watchPrintJob(job)
                 } catch (e: Throwable) {
                     WrapperLogger.e("AppBridge", "PrintManager.print failed", e)
                     Toast.makeText(context, "Print failed: ${e.message}", Toast.LENGTH_LONG).show()
