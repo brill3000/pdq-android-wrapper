@@ -18,6 +18,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var webView: WebView
     private lateinit var bridge: PrinterBridge
+    private lateinit var network: NetworkBridge
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,6 +44,7 @@ class MainActivity : AppCompatActivity() {
 
         webView = binding.webview
         bridge = PrinterBridge(this)
+        network = NetworkBridge(this) { webView }
 
         with(webView.settings) {
             javaScriptEnabled = true
@@ -56,8 +58,9 @@ class MainActivity : AppCompatActivity() {
             userAgentString = "$userAgentString HidukaPDQ/${BuildConfig.VERSION_NAME}"
         }
 
-        // window.HidukaPrinter on the JS side.
+        // window.HidukaPrinter + window.HidukaNetwork on the JS side.
         webView.addJavascriptInterface(bridge, "HidukaPrinter")
+        webView.addJavascriptInterface(network, "HidukaNetwork")
 
         webView.webViewClient = WebViewClient()
         webView.webChromeClient = WebChromeClient()
@@ -69,9 +72,12 @@ class MainActivity : AppCompatActivity() {
                 if (webView.canGoBack()) webView.goBack() else finish()
             }
         })
+
+        network.start()
     }
 
     override fun onDestroy() {
+        network.stop()
         webView.destroy()
         super.onDestroy()
     }
