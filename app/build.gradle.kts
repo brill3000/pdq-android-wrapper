@@ -53,6 +53,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.webkit:webkit:1.10.0")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 
     // Newland NDK SDK lives in app/libs/ once you have the .aar from
     // Newland. Uncomment and adjust the artefact name when adding it.

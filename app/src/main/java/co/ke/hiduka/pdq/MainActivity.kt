@@ -19,6 +19,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var bridge: PrinterBridge
     private lateinit var network: NetworkBridge
+    private lateinit var app: AppBridge
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,6 +46,33 @@ class MainActivity : AppCompatActivity() {
         webView = binding.webview
         bridge = PrinterBridge(this)
         network = NetworkBridge(this) { webView }
+        app = AppBridge { webView }
+
+        // Pull-to-refresh — only enabled when the WebView is scrolled
+        // to the top, otherwise it fights with the page's own scroll.
+        binding.swiperefresh.setOnRefreshListener {
+            webView.reload()
+        }
+        webView.viewTreeObserver.addOnScrollChangedListener {
+            binding.swiperefresh.isEnabled = webView.scrollY == 0
+        }
+        // Dismiss the spinner once the page finishes (or errors).
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                binding.swiperefresh.isRefreshing = false
+            }
+            override fun onReceivedError(
+                view: WebView?,
+                errorCode: Int,
+                description: String?,
+                failingUrl: String?,
+            ) {
+                @Suppress("DEPRECATION")
+                super.onReceivedError(view, errorCode, description, failingUrl)
+                binding.swiperefresh.isRefreshing = false
+            }
+        }
 
         with(webView.settings) {
             javaScriptEnabled = true
@@ -58,11 +86,11 @@ class MainActivity : AppCompatActivity() {
             userAgentString = "$userAgentString HidukaPDQ/${BuildConfig.VERSION_NAME}"
         }
 
-        // window.HidukaPrinter + window.HidukaNetwork on the JS side.
+        // window.HidukaPrinter + window.HidukaNetwork + window.HidukaApp.
         webView.addJavascriptInterface(bridge, "HidukaPrinter")
         webView.addJavascriptInterface(network, "HidukaNetwork")
+        webView.addJavascriptInterface(app, "HidukaApp")
 
-        webView.webViewClient = WebViewClient()
         webView.webChromeClient = WebChromeClient()
 
         webView.loadUrl(BuildConfig.WEB_APP_URL)
