@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.os.Build
 import android.os.Environment
+import android.print.PrintAttributes
+import android.print.PrintManager
 import android.provider.MediaStore
 import android.util.Base64
 import android.webkit.JavascriptInterface
@@ -104,6 +106,48 @@ class AppBridge(
         } catch (e: Throwable) {
             WrapperLogger.e("AppBridge", "saveFile failed: ${e.message}", e)
             """{"ok":false,"error":"${(e.message ?: "save failed").replace("\"", "\\\"")}"}"""
+        }
+    }
+
+    /**
+     * Hand a base64-encoded PDF directly to Android's PrintManager. Fires
+     * the system print picker, which surfaces every registered print
+     * service on the device — including the NB55's built-in printer
+     * service that the user spotted when opening a PDF via the file
+     * manager. No SDK / NDK required.
+     *
+     * Writes the bytes to cacheDir first, then constructs a
+     * PdfPrintAdapter pointed at that file. PrintManager pulls the bytes
+     * back through the adapter when the user picks a destination.
+     */
+    @JavascriptInterface
+    fun printPdf(base64Data: String, jobName: String): String {
+        WrapperLogger.i(
+            "AppBridge",
+            "printPdf",
+            mapOf("jobName" to jobName, "bytes" to base64Data.length),
+        )
+        return try {
+            val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+            val cacheFile = File.createTempFile("print-", ".pdf", context.cacheDir)
+            FileOutputStream(cacheFile).use { it.write(bytes) }
+
+            val webView = webViewProvider()
+            // PrintManager.print must run on the activity's UI thread.
+            webView?.post {
+                try {
+                    val pm = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+                    val adapter = PdfPrintAdapter(cacheFile, jobName)
+                    pm.print(jobName, adapter, PrintAttributes.Builder().build())
+                } catch (e: Throwable) {
+                    WrapperLogger.e("AppBridge", "PrintManager.print failed", e)
+                    Toast.makeText(context, "Print failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+            """{"ok":true}"""
+        } catch (e: Throwable) {
+            WrapperLogger.e("AppBridge", "printPdf failed: ${e.message}", e)
+            """{"ok":false,"error":"${(e.message ?: "print failed").replace("\"", "\\\"")}"}"""
         }
     }
 }
