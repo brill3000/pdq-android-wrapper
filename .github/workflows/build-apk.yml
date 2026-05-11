@@ -50,7 +50,21 @@ jobs:
 
       # Rolling "latest" release — every successful main build replaces it.
       # Cashiers can always grab https://github.com/<owner>/<repo>/releases/latest
-      # on the PDQ browser and install.
+      # on the PDQ browser and install. softprops/action-gh-release does
+      # not prune old assets by default, so we wipe them first to keep the
+      # release page tidy — only the freshest APK ever appears there.
+      - name: Strip old APKs from the "latest" release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view latest --json assets --jq '.assets[].name' 2>/dev/null \
+            | while read asset; do
+                [ -z "$asset" ] && continue
+                echo "Deleting old asset: $asset"
+                gh release delete-asset latest "$asset" --yes || true
+              done
+
       - name: Publish rolling "latest" release
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
