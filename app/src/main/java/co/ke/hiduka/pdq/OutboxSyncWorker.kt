@@ -161,6 +161,12 @@ class OutboxSyncWorker(
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Authorization", "Bearer $token")
                 setRequestProperty("Accept", "application/json")
+                // Apollo Server v4 CSRF protection blocks POSTs unless one
+                // of these is set even when content-type is JSON. Apollo
+                // Client attaches `x-apollo-operation-name` automatically;
+                // raw HttpURLConnection does not, so we send both here.
+                setRequestProperty("apollo-require-preflight", "true")
+                setRequestProperty("x-apollo-operation-name", operationName)
             }
             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             val status = conn.responseCode
