@@ -28,6 +28,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bridge: PrinterBridge
     private lateinit var network: NetworkBridge
     private lateinit var app: AppBridge
+    private lateinit var storage: StorageBridge
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         bridge = PrinterBridge(this)
         network = NetworkBridge(this) { webView }
         app = AppBridge(this) { webView }
+        storage = StorageBridge(this)
 
         // Pull-to-refresh — only enabled when the WebView is scrolled
         // to the top, otherwise it fights with the page's own scroll.
@@ -94,10 +96,11 @@ class MainActivity : AppCompatActivity() {
             userAgentString = "$userAgentString HidukaPDQ/${BuildConfig.VERSION_NAME}"
         }
 
-        // window.HidukaPrinter + window.HidukaNetwork + window.HidukaApp.
+        // JS-side bridges: HidukaPrinter, HidukaNetwork, HidukaApp, HidukaStorage.
         webView.addJavascriptInterface(bridge, "HidukaPrinter")
         webView.addJavascriptInterface(network, "HidukaNetwork")
         webView.addJavascriptInterface(app, "HidukaApp")
+        webView.addJavascriptInterface(storage, "HidukaStorage")
 
         webView.webChromeClient = WebChromeClient()
 
