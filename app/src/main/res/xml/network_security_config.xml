@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!-- Add overrides here if you ever need to hit a local dev server on
+         the PDQ's LAN:
+         <domain-config cleartextTrafficPermitted="true">
+             <domain includeSubdomains="true">192.168.0.0/16</domain>
+         </domain-config>
+    -->
+</network-security-config>
