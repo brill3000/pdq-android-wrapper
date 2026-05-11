@@ -56,7 +56,7 @@ class MainActivity : AppCompatActivity() {
         webView = binding.webview
         bridge = PrinterBridge(this)
         network = NetworkBridge(this) { webView }
-        app = AppBridge { webView }
+        app = AppBridge(this) { webView }
 
         // Pull-to-refresh — only enabled when the WebView is scrolled
         // to the top, otherwise it fights with the page's own scroll.
@@ -145,8 +145,25 @@ class MainActivity : AppCompatActivity() {
     private fun handleDownload(url: String, contentDisposition: String?, mimeType: String?) {
         try {
             val filename = URLUtil.guessFileName(url, contentDisposition, mimeType)
+            WrapperLogger.i(
+                "MainActivity",
+                "download requested",
+                mapOf(
+                    "scheme" to url.substringBefore(':'),
+                    "filename" to filename,
+                    "mime" to (mimeType ?: ""),
+                ),
+            )
             if (url.startsWith("data:")) {
                 writeDataUrlToDownloads(url, filename)
+                return
+            }
+            if (url.startsWith("blob:")) {
+                // blob: URLs only exist in the WebView's renderer
+                // process — DownloadManager can't fetch them. Inject
+                // a tiny reader that pulls the blob via fetch + FileReader
+                // and routes the base64 payload back through AppBridge.saveFile.
+                readBlobAndSave(url, filename, mimeType)
                 return
             }
             val req = DownloadManager.Request(Uri.parse(url)).apply {
@@ -168,6 +185,39 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "download failed: ${e.message}", e)
             Toast.makeText(this, "Download failed: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun readBlobAndSave(blobUrl: String, filename: String, mimeType: String?) {
+        // Escape values for safe template interpolation into JS.
+        val safeUrl = blobUrl.replace("'", "\\'")
+        val safeName = filename.replace("'", "\\'").replace("\"", "\\\"")
+        val safeMime = (mimeType ?: "").replace("'", "\\'").replace("\"", "\\\"")
+        val js = """
+            (function() {
+              fetch('$safeUrl')
+                .then(function(r) { return r.blob(); })
+                .then(function(blob) {
+                  return new Promise(function(resolve, reject) {
+                    var reader = new FileReader();
+                    reader.onload = function() { resolve(reader.result); };
+                    reader.onerror = function() { reject(reader.error); };
+                    reader.readAsDataURL(blob);
+                  });
+                })
+                .then(function(dataUrl) {
+                  var idx = dataUrl.indexOf('base64,');
+                  if (idx < 0) throw new Error('blob did not encode to base64');
+                  var b64 = dataUrl.substring(idx + 7);
+                  if (window.HidukaApp && typeof window.HidukaApp.saveFile === 'function') {
+                    window.HidukaApp.saveFile(b64, "$safeName", "$safeMime");
+                  }
+                })
+                .catch(function(e) {
+                  console.error('blob download failed', e);
+                });
+            })();
+        """.trimIndent()
+        webView.post { webView.evaluateJavascript(js, null) }
     }
 
     private fun writeDataUrlToDownloads(dataUrl: String, filename: String) {
