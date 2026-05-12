@@ -305,10 +305,40 @@ private object Mutations {
         }
     """
 
+    private const val CREATE_CUSTOMER_OP = "CreateCustomer"
+    private const val CREATE_CUSTOMER_QUERY = """
+        mutation CreateCustomer(
+          ${'$'}custTin: String
+          ${'$'}custNm: String!
+          ${'$'}adrs: String
+          ${'$'}telNo: String!
+          ${'$'}email: String
+          ${'$'}fullAddress: String
+          ${'$'}useYn: String!
+          ${'$'}isWholesale: Boolean
+          ${'$'}clientReference: String
+        ) {
+          createBranchCustomer(
+            createCustomerInput: {
+              custTin: ${'$'}custTin
+              custNm: ${'$'}custNm
+              adrs: ${'$'}adrs
+              telNo: ${'$'}telNo
+              email: ${'$'}email
+              fullAddress: ${'$'}fullAddress
+              useYn: ${'$'}useYn
+              isWholesale: ${'$'}isWholesale
+              clientReference: ${'$'}clientReference
+            }
+          ) { id custNm telNo }
+        }
+    """
+
     fun byKind(kind: String): String? = when (kind) {
         "CREATE_SALE_INVOICE" -> CREATE_SALE_INVOICE_QUERY
         "OPEN_SHIFT" -> OPEN_SHIFT_QUERY
         "CLOSE_SHIFT" -> CLOSE_SHIFT_QUERY
+        "CREATE_CUSTOMER" -> CREATE_CUSTOMER_QUERY
         else -> null
     }
 
@@ -316,6 +346,7 @@ private object Mutations {
         "CREATE_SALE_INVOICE" -> CREATE_SALE_INVOICE_OP
         "OPEN_SHIFT" -> OPEN_SHIFT_OP
         "CLOSE_SHIFT" -> CLOSE_SHIFT_OP
+        "CREATE_CUSTOMER" -> CREATE_CUSTOMER_OP
         else -> kind
     }
 }
