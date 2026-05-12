@@ -47,6 +47,7 @@ class OutboxSyncWorker(
         val endpoint = storage.kvGet("graphqlEndpoint")
             ?.takeIf { it.isNotBlank() }
             ?: BuildConfig.GRAPHQL_ENDPOINT
+        val deviceId = storage.kvGet("deviceId")
 
         val entries = try {
             JSONArray(storage.outboxList())
@@ -91,7 +92,7 @@ class OutboxSyncWorker(
                 continue
             }
 
-            val result = postGraphQL(endpoint, token, operationName, mutationText, variables)
+            val result = postGraphQL(endpoint, token, deviceId, operationName, mutationText, variables)
             when (result) {
                 is GqlResult.Ok -> {
                     storage.outboxRemove(id)
@@ -142,6 +143,7 @@ class OutboxSyncWorker(
     private fun postGraphQL(
         endpoint: String,
         token: String,
+        deviceId: String?,
         operationName: String,
         query: String,
         variables: JSONObject,
@@ -167,6 +169,9 @@ class OutboxSyncWorker(
                 // raw HttpURLConnection does not, so we send both here.
                 setRequestProperty("apollo-require-preflight", "true")
                 setRequestProperty("x-apollo-operation-name", operationName)
+                if (!deviceId.isNullOrBlank()) {
+                    setRequestProperty("x-hdq-device-id", deviceId)
+                }
             }
             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             val status = conn.responseCode
@@ -241,6 +246,7 @@ private object Mutations {
           ${'$'}totalTaxE: Float!
           ${'$'}items: [InvoiceItemInput!]!
           ${'$'}invoiceTo: String!
+          ${'$'}externalReference: String
         ) {
           createSaleInvoice(
             createSaleInvoiceInput: {
@@ -265,18 +271,51 @@ private object Mutations {
               shipping: ${'$'}shipping
               items: ${'$'}items
               invoiceTo: ${'$'}invoiceTo
+              externalReference: ${'$'}externalReference
             }
-          ) { id invoiceNumber }
+          ) { id invoiceNumber externalReference }
+        }
+    """
+
+    private const val OPEN_SHIFT_OP = "OpenShift"
+    private const val OPEN_SHIFT_QUERY = """
+        mutation OpenShift(${'$'}openingCash: Float!, ${'$'}clientReference: String) {
+          openShift(openingCash: ${'$'}openingCash, clientReference: ${'$'}clientReference) {
+            id status openedAt openingCash
+          }
+        }
+    """
+
+    private const val CLOSE_SHIFT_OP = "CloseShift"
+    private const val CLOSE_SHIFT_QUERY = """
+        mutation CloseShift(
+          ${'$'}shiftId: String!
+          ${'$'}closingCash: Float!
+          ${'$'}closingNote: String
+          ${'$'}clientReference: String
+        ) {
+          closeShift(
+            shiftId: ${'$'}shiftId
+            closingCash: ${'$'}closingCash
+            closingNote: ${'$'}closingNote
+            clientReference: ${'$'}clientReference
+          ) {
+            id status closedAt closingCash
+          }
         }
     """
 
     fun byKind(kind: String): String? = when (kind) {
         "CREATE_SALE_INVOICE" -> CREATE_SALE_INVOICE_QUERY
+        "OPEN_SHIFT" -> OPEN_SHIFT_QUERY
+        "CLOSE_SHIFT" -> CLOSE_SHIFT_QUERY
         else -> null
     }
 
     fun operationName(kind: String): String = when (kind) {
         "CREATE_SALE_INVOICE" -> CREATE_SALE_INVOICE_OP
+        "OPEN_SHIFT" -> OPEN_SHIFT_OP
+        "CLOSE_SHIFT" -> CLOSE_SHIFT_OP
         else -> kind
     }
 }
